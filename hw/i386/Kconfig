@@ -88,6 +88,21 @@ config I440FX
     select SMBIOS_LEGACY
     select FW_CFG_DMA
 
+config ATV
+    bool
+    default y
+    depends on I386
+    imply RTL8139_PCI
+    select PC_PCI
+    select PC_ACPI
+    select PCI_I440FX
+    select PIIX
+    select ACPI_PIIX4
+    select DIMM
+    select SMBIOS
+    select SMBIOS_LEGACY
+    select FW_CFG_DMA
+
 config ISAPC
     bool
     default y
