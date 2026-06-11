@@ -33,6 +33,7 @@
 #include "hw/i2c/smbus_eeprom.h"
 #include "hw/acpi/acpi.h"
 #include "hw/mem/nvdimm.h"
+#include "hw/firmware/smbios.h"
 #include "system/memory.h"
 #include "system/kvm.h"
 #include "system/tcg.h"
@@ -45,13 +46,12 @@
 /* Apple TV 1st gen has 256 MB RAM soldered */
 #define ATV_RAM_SIZE        (256 * MiB)
 
-/*
- * The Apple TV firmware (boot.efi) expects the machine to identify itself
- * with specific DMI strings. We expose these via SMBIOS so boot.efi can
- * recognise the board.
- */
-#define ATV_SMBIOS_PRODUCT  "AppleTV1,1"
-#define ATV_SMBIOS_BOARD    "Mac-F4228DC8"
+/* SMBIOS identity strings that boot.efi checks at startup */
+#define ATV_SMBIOS_MANUFACTURER "Apple Inc."
+#define ATV_SMBIOS_PRODUCT      "AppleTV1,1"
+#define ATV_SMBIOS_VERSION      "1.0"
+#define ATV_SMBIOS_BOARD        "Mac-F4228DC8"
+#define ATV_SMBIOS_FAMILY       "AppleTV"
 
 static int atv_pci_slot_get_pirq(PCIDevice *pci_dev, int pci_intx)
 {
@@ -130,6 +130,17 @@ static void atv_machine_init(MachineState *machine)
 
     pc_memory_init(pcms, system_memory, pci_memory, hole64_size);
 
+    /*
+     * Override SMBIOS Type 1 (System Information) and Type 2 (Baseboard)
+     * fields so boot.efi recognises this as an AppleTV1,1.
+     * fw_cfg_build_smbios() calls smbios_set_defaults() which reads these
+     * globals; we overwrite them here, before that call happens.
+     */
+    smbios_type1.manufacturer = ATV_SMBIOS_MANUFACTURER;
+    smbios_type1.product      = ATV_SMBIOS_PRODUCT;
+    smbios_type1.version      = ATV_SMBIOS_VERSION;
+    smbios_type1.family       = ATV_SMBIOS_FAMILY;
+
     gsi_state = pc_gsi_create(&x86ms->gsi, true);
 
     /*
@@ -191,8 +202,13 @@ static void atv_machine_init(MachineState *machine)
                                  piix4_pm, &error_abort);
     }
 
-    /* VGA — GeForce Go 7300 is not yet emulated; fall back to std VGA */
-    pc_vga_init(isa_bus, pcms->pcibus);
+    /*
+     * GPU: NVIDIA GeForce Go 7300 (NV43/G72M) at PCI 01:00.0.
+     * The nv43-gpu device presents the correct PCI vendor/device IDs
+     * (10de:01d7) and provides a working VGA framebuffer backed by the
+     * standard QEMU VGA core.
+     */
+    pci_create_simple(pcms->pcibus, PCI_DEVFN(1, 0), "nv43-gpu");
 
     pc_basic_device_init(pcms, isa_bus, x86ms->gsi, x86ms->rtc,
                          false, /* no floppy on Apple TV */
@@ -204,6 +220,31 @@ static void atv_machine_init(MachineState *machine)
      * Default to rtl8139 to match hardware.
      */
     pc_nic_init(pcmc, isa_bus, pcms->pcibus);
+
+    /*
+     * Broadcom BCM4321 802.11a/b/g/n at PCI 02:00.0.
+     * Presents correct PCI IDs (14e4:4328); the stub is enough for boot.efi
+     * to enumerate the device without crashing.
+     */
+    pci_create_simple(pcms->pcibus, -1, "bcm4321-wifi");
+
+    /*
+     * Intel ICH7-M HD Audio at PCI 00:1b.0 (device_id 0x27d8).
+     * Attach an ALC885-compatible duplex codec on the HDA bus.
+     */
+    {
+        PCIDevice *hda_pci;
+        BusState *hda_bus;
+        DeviceState *codec;
+
+        hda_pci = pci_create_simple(pcms->pcibus,
+                                    PCI_DEVFN(0x1b, 0), "ich7-intel-hda");
+        hda_bus = QLIST_FIRST(&hda_pci->qdev.child_bus);
+        if (hda_bus) {
+            codec = qdev_new("alc885");
+            qdev_realize_and_unref(codec, hda_bus, &error_fatal);
+        }
+    }
 
     if (machine->nvdimms_state->is_enabled) {
         nvdimm_init_acpi_state(machine->nvdimms_state, system_io,

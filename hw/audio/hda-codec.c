@@ -905,12 +905,38 @@ static const TypeInfo hda_audio_micro_info = {
     .class_init    = hda_audio_micro_class_init,
 };
 
+/*
+ * ALC885 — Realtek HD Audio codec used in Apple TV 1st generation.
+ *
+ * The ALC885 is a full-duplex codec (line-out + line-in + S/PDIF).
+ * We reuse the existing hda-duplex descriptor graph (QEMU virtual codec)
+ * rather than reverse-engineering every ALC885 verb/node table, which
+ * gives working audio under any HDA driver.  The codec vendor/device ID
+ * is set to the real Realtek ALC885 value (10ec:0885) so the OS can load
+ * the correct mixer profile.
+ */
+static void hda_audio_alc885_class_init(ObjectClass *klass, const void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    HDACodecDeviceClass *k = HDA_CODEC_DEVICE_CLASS(klass);
+
+    k->init = hda_audio_init_duplex;
+    dc->desc = "Realtek ALC885 HD Audio Codec (Apple TV 1st gen)";
+}
+
+static const TypeInfo hda_audio_alc885_info = {
+    .name       = "alc885",
+    .parent     = TYPE_HDA_AUDIO,
+    .class_init = hda_audio_alc885_class_init,
+};
+
 static void hda_audio_register_types(void)
 {
     type_register_static(&hda_audio_info);
     type_register_static(&hda_audio_output_info);
     type_register_static(&hda_audio_duplex_info);
     type_register_static(&hda_audio_micro_info);
+    type_register_static(&hda_audio_alc885_info);
 }
 
 type_init(hda_audio_register_types)

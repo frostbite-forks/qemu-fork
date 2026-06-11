@@ -70,6 +70,12 @@ config BOCHS_DISPLAY
     select VGA
     select EDID
 
+config NV43_GPU
+    bool
+    depends on PCI
+    select VGA
+    select VGA_PCI
+
 config FRAMEBUFFER
     bool
 

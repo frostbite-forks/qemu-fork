@@ -102,6 +102,9 @@ config ATV
     select SMBIOS
     select SMBIOS_LEGACY
     select FW_CFG_DMA
+    select NV43_GPU
+    select BCM4321_WIFI
+    select HDA
 
 config ISAPC
     bool
